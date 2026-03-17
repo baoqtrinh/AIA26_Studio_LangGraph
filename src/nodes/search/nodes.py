@@ -1,6 +1,6 @@
 from models.state import BoxState
 from utils.llm_utils import llm, fast_llm
-from tools.search import search_web
+from tools.search.tools import search_web
 import json
 import textwrap
 

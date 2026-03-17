@@ -1,5 +1,50 @@
+import requests
 from typing import Dict, Any, List, Optional
 from models.state import BoxState
+
+try:
+    from settings import MCP_GH_ENDPOINT, MCP_TIMEOUT
+except ImportError:
+    import os
+    MCP_GH_ENDPOINT = os.getenv("MCP_GH_ENDPOINT", "http://localhost:5001/mcp/")
+    MCP_TIMEOUT = int(os.getenv("MCP_TIMEOUT", "30"))
+
+
+def _call_mcp_draw_box(area: float, width: float, number_of_floors: int, floor_height: float) -> str:
+    """Forward draw_box to the Grasshopper MCP server via JSON-RPC 2.0."""
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "draw_box",
+            "arguments": {
+                "area": area,
+                "width": width,
+                "number_of_floors": int(number_of_floors),
+                "floor_height": floor_height,
+            },
+        },
+    }
+    try:
+        resp = requests.post(
+            MCP_GH_ENDPOINT,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=MCP_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if "error" in data:
+            return f"MCP error: {data['error']}"
+        result = data.get("result", {})
+        return str(result.get("content", result))
+    except requests.exceptions.Timeout:
+        return f"MCP timeout after {MCP_TIMEOUT}s — is Grasshopper running?"
+    except requests.exceptions.ConnectionError:
+        return "MCP connection error: is Grasshopper running?"
+    except Exception as exc:
+        return f"MCP call failed: {exc}"
 
 def retrieve_rules_fn(state: BoxState) -> BoxState:
     """Retrieve the building code rules and constraints."""
@@ -162,12 +207,24 @@ def draw_box_fn(state: BoxState) -> BoxState:
         "window_area": state.window_area
     })
     
+    # Call Grasshopper MCP server to draw the geometry
+    if width and n_floors and floor_height:
+        print(f"  [draw_box] → MCP area={area}, width={width}, number_of_floors={n_floors}, floor_height={floor_height}")
+        mcp_result = _call_mcp_draw_box(
+            area=float(area),
+            width=float(width),
+            number_of_floors=int(n_floors),
+            floor_height=float(floor_height),
+        )
+        print(f"  [draw_box] ← {mcp_result}")
+        state.box["mcp_result"] = mcp_result
+
     # Add to history
     state.history.append({
         "node": "draw_box",
         "box": state.box.copy()
     })
-    
+
     return state
 
 def compliance_check_fn(state: BoxState) -> BoxState:

@@ -19,11 +19,7 @@ _ROOT = os.path.dirname(os.path.dirname(_HERE))       # .../AgentApp
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-try:
-    from app.config import MCP_GH_ENDPOINT, MCP_TIMEOUT
-except ImportError:
-    MCP_GH_ENDPOINT = os.getenv("MCP_GH_ENDPOINT", "http://localhost:5100")
-    MCP_TIMEOUT = int(os.getenv("MCP_TIMEOUT", "30"))
+from settings import MCP_GH_ENDPOINT, MCP_TIMEOUT
 
 import requests
 

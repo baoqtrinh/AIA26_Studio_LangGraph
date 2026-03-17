@@ -1,9 +1,18 @@
 # ─────────────────────────────────────────────────────────────────────────────
-#  settings.py  —  Non-secret runtime configuration
+#  settings.py  —  Runtime configuration (non-secret + secret keys)
 #
 #  Edit this file to switch LLM providers, models, or toggle plan mode.
-#  Secret keys (GOOGLE_API_KEY, TAVILY_API_KEY, …) stay in .env.local.
+#  Secret keys are loaded from .env.local in the same directory.
 # ─────────────────────────────────────────────────────────────────────────────
+import os
+from dotenv import load_dotenv
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(_HERE, ".env.local"))
+
+# ── Secret keys (loaded from .env.local) ─────────────────────────────────────
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 
 # ── LLM Provider ─────────────────────────────────────────────────────────────
 # "local"  → OpenAI-compatible local server (e.g. LM Studio)
@@ -20,7 +29,7 @@ LLM_TIMEOUT     = 60     # seconds
 GEMINI_MODEL = "gemini-2.5-flash-lite"
 
 # ── Grasshopper MCP server ────────────────────────────────────────────────────
-MCP_GH_ENDPOINT = "http://localhost:5100"
+MCP_GH_ENDPOINT = "http://localhost:5001/mcp/"  # Swiftlet JSON-RPC 2.0 endpoint
 MCP_TIMEOUT     = 30     # seconds
 
 # ── Plan mode default ─────────────────────────────────────────────────────────

@@ -28,7 +28,7 @@ def classify_input_fn(state: BoxState) -> BoxState:
 
     # ── Dynamic tool section ──────────────────────────────────────────────────
     try:
-        from tools import TOOL_CLASSES
+        from tools.mcp.loader import TOOL_CLASSES
         if TOOL_CLASSES:
             tool_names = ", ".join(t.name for t in TOOL_CLASSES)
             tool_section = (
@@ -55,12 +55,18 @@ Categories:
    (floors, total area, depth, structural ratios, emergency exits, building code).
 {tool_section}
 3. show_guide: Show design guidelines, rules or constraints
-4. general_question: General architecture question that does NOT involve drawing or sizing a building
-5. unknown: Does not fit any category above
+4. general_question: General architecture or design question that does NOT involve drawing,
+   sizing a building, or running tools. Must be about architecture, engineering, or construction.
+5. plan: The user lists TWO OR MORE sequential steps or tasks to perform in order
+   (e.g. "1) do X, 2) do Y, 3) do Z" or "first … then … finally …").
+6. unknown: Does not fit any category above, or is completely unrelated to architecture/design/construction.
 
 Rules:
 - Whole-building sizing with code compliance → design_building
 - Drawing / modelling any specific geometry shape or running a named tool → use_tool
+- Two or more ordered steps to execute in sequence → plan
+- Architecture/design/construction knowledge question (no drawing, no sizing) → general_question
+- Anything outside architecture, design, or construction → unknown
 - Output ONLY the category name, nothing else.
 
 Classification:"""
@@ -83,6 +89,8 @@ Classification:"""
         state.request_type = "use_tool"
     elif "show_guide" in classification:
         state.request_type = "show_guide"
+    elif "plan" in classification:
+        state.request_type = "plan"
     elif "general_question" in classification:
         state.request_type = "general_question"
     else:

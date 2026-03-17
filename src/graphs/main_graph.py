@@ -2,14 +2,14 @@ from langgraph.graph import StateGraph
 
 from models.state import BoxState
 from nodes.classification import classify_input_fn
-from nodes.information import show_guide_fn, handle_unknown_fn
-from nodes.search import (
+from nodes.information.nodes import show_guide_fn, handle_unknown_fn
+from nodes.search.nodes import (
     determine_search_need_fn,
     perform_web_search_fn,
     answer_with_search_fn,
     answer_without_search_fn,
 )
-from nodes.building_design import (
+from nodes.building_design.nodes import (
     retrieve_rules_fn,
     thinking_fn,
     action_fn,
@@ -17,8 +17,7 @@ from nodes.building_design import (
     compliance_check_fn,
     is_compliant_fn,
 )
-from nodes.tool_use import execute_gh_tool_fn
-from nodes.planning import (
+from nodes.planning.nodes import (
     planner_fn,
     plan_step_fn,
     plan_step_router,
@@ -55,9 +54,6 @@ def build_main_graph(checkpointer=None):
     g.add_node("execute_plan_step",    plan_step_fn)
     g.add_node("plan_summary",         plan_summary_fn)
 
-    # ── Branch B: Single GH geometry tool ────────────────────────────────
-    g.add_node("execute_gh_tool",      execute_gh_tool_fn)
-
     # ── Branch B: Building design ReAct loop ───────────────────────────
     g.add_node("retrieve_rules",       retrieve_rules_fn)
     g.add_node("thinking",             thinking_fn)
@@ -84,7 +80,7 @@ def build_main_graph(checkpointer=None):
         lambda state: state.request_type,
         {
             "plan":              "planner",
-            "use_tool":          "execute_gh_tool",
+            "use_tool":          "handle_unknown",
             "design_building":   "retrieve_rules",
             "show_guide":        "show_guide",
             "general_question":  "determine_search_need",
@@ -101,10 +97,7 @@ def build_main_graph(checkpointer=None):
     )
     g.add_edge("plan_summary", "__end__")
 
-    # Branch B terminal
-    g.add_edge("execute_gh_tool", "__end__")
-
-    # Branch C: ReAct loop
+    # Branch B: ReAct loop
     g.add_edge("retrieve_rules",   "thinking")
     g.add_edge("thinking",         "execute_action")
     g.add_edge("execute_action",   "draw_box")

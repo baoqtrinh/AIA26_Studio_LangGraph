@@ -20,24 +20,10 @@ from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from langchain_core.messages import ToolCall
 
-try:
-    from app.config import (
-        LLM_PROVIDER, LLM_ENDPOINT, LLM_MODEL, LLM_TEMPERATURE, LLM_TIMEOUT,
-        GOOGLE_API_KEY, GEMINI_MODEL,
-    )
-except ImportError:
-    from dotenv import load_dotenv
-    _HERE = os.path.dirname(os.path.abspath(__file__))
-    _ROOT = os.path.dirname(_HERE)  # AgentApp/
-    load_dotenv(os.path.join(_ROOT, ".env"))
-    load_dotenv(os.path.join(_ROOT, ".env.local"), override=True)
-    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "local").lower()
-    LLM_ENDPOINT = os.getenv("LLM_ENDPOINT", "http://localhost:1234/v1/chat/completions")
-    LLM_MODEL = os.getenv("LLM_MODEL", None)
-    LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.2"))
-    LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "60"))
-    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
-    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+from settings import (
+    LLM_PROVIDER, LLM_ENDPOINT, LLM_MODEL, LLM_TEMPERATURE, LLM_TIMEOUT,
+    GOOGLE_API_KEY, GEMINI_MODEL,
+)
 
 
 class ChatLocalLLM(BaseChatModel):
@@ -264,3 +250,28 @@ def reason_about_image(
 print(f"  [llm] provider = {LLM_PROVIDER}"
       + (f"  model = {GEMINI_MODEL}" if LLM_PROVIDER == "gemini"
          else f"  endpoint = {LLM_ENDPOINT}"))
+
+
+def _handle_image_result(result_str: str, user_input: str) -> str:
+    """If result_str is a JSON payload with image_base64, run VLM reasoning and return analysis."""
+    import json
+    try:
+        data = json.loads(result_str)
+    except (json.JSONDecodeError, TypeError):
+        return result_str
+
+    if not isinstance(data, dict) or "image_base64" not in data:
+        return result_str
+
+    base64_png = data["image_base64"]
+    view_name  = data.get("view_name", "")
+    w, h       = data.get("width", "?"), data.get("height", "?")
+
+    question = (
+        f"This is a screenshot of the current Rhino 3D viewport.\n"
+        f"Original user request: \"{user_input}\"\n\n"
+        "Describe what you see: geometry types, approximate sizes, any issues "
+        "or suggestions for the design. Be concise."
+    )
+    analysis = reason_about_image(base64_png, question=question, view_name=view_name)
+    return f"[Viewport capture {w}×{h} — {view_name}]\n\n{analysis}"

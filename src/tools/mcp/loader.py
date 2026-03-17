@@ -13,12 +13,7 @@ from pydantic import BaseModel, Field, create_model
 from tools.base import BaseAgentTool
 
 # Import config from app/ package; fall back to env vars if run stand-alone
-try:
-    from app.config import MCP_GH_ENDPOINT, MCP_TIMEOUT
-except ImportError:
-    import os
-    MCP_GH_ENDPOINT = os.getenv("MCP_GH_ENDPOINT", "http://localhost:5100")
-    MCP_TIMEOUT = int(os.getenv("MCP_TIMEOUT", "30"))
+from settings import MCP_GH_ENDPOINT, MCP_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -40,31 +35,29 @@ class DynamicMCPTool(BaseAgentTool):
 
     def _run(self, **kwargs: Any) -> str:
         clean_args = {k: v for k, v in kwargs.items() if v is not None}
+        payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": self.mcp_tool_name, "arguments": clean_args},
+        }
         try:
             resp = requests.post(
-                f"{self.mcp_endpoint}/api/call_tool",
-                json={"name": self.mcp_tool_name, "arguments": clean_args},
+                self.mcp_endpoint,
+                json=payload,
+                headers={"Content-Type": "application/json"},
                 timeout=self.mcp_timeout,
             )
-            if resp.status_code == 200:
-                result = resp.json()
-                if "error" in result:
-                    return f"Error: {result['error']}"
-                tool_result = (
-                    result.get("result")
-                    or result.get("data")
-                    or result.get("content")
-                )
-                if not tool_result:
-                    return "No result returned"
-                if isinstance(tool_result, str) and tool_result.strip().startswith(("{", "[")):
-                    try:
-                        return json.dumps(json.loads(tool_result))
-                    except json.JSONDecodeError:
-                        pass
-                return str(tool_result)
-            else:
-                return f"Error: server returned {resp.status_code}: {resp.text}"
+            resp.raise_for_status()
+            data = resp.json()
+            if "error" in data:
+                return f"Error: {data['error']}"
+            content = data.get("result", {}).get("content", [])
+            if not content:
+                return "No result returned"
+            texts = [item["text"] for item in content if item.get("type") == "text"]
+            result_str = "\n".join(texts) if texts else str(content)
+            return result_str
         except requests.exceptions.Timeout:
             return f"Error: request timed out after {self.mcp_timeout}s"
         except requests.exceptions.ConnectionError:
@@ -126,16 +119,17 @@ def create_tool_from_definition(tool_def: Dict[str, Any]) -> BaseTool:
 # ── Fetching ──────────────────────────────────────────────────────────────────
 
 def fetch_tool_definitions() -> List[Dict[str, Any]]:
-    """Query /api/list_tools from the running GH MCP server."""
+    """Query tools/list from the running GH MCP server (JSON-RPC 2.0)."""
     try:
         resp = requests.post(
-            f"{MCP_GH_ENDPOINT}/api/list_tools",
-            json={},
+            MCP_GH_ENDPOINT,
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+            headers={"Content-Type": "application/json"},
             timeout=MCP_TIMEOUT,
         )
         resp.raise_for_status()
         data = resp.json()
-        tools = data.get("tools", [])
+        tools = data.get("result", {}).get("tools", [])
         logger.info(f"GH MCP Server: loaded {len(tools)} tools")
         return tools
     except requests.exceptions.ConnectionError:

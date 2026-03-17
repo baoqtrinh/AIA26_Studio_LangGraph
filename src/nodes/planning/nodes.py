@@ -41,7 +41,7 @@ def _think(label: str, text: str):
 
 def planner_fn(state: BoxState) -> BoxState:
     """Decompose the user's multi-step request into an ordered tool-call plan."""
-    from tools import TOOL_CLASSES
+    from tools.mcp.loader import TOOL_CLASSES
 
     user_input: str = state.request.get("user_input", "")
 
@@ -132,7 +132,7 @@ Plan:"""
 
 def plan_step_fn(state: BoxState) -> BoxState:
     """Execute the current plan step via LLM tool-calling, then advance the counter."""
-    from tools import TOOL_CLASSES
+    from tools.mcp.loader import TOOL_CLASSES
 
     plan = state.plan or []
     idx = state.plan_step
@@ -202,7 +202,7 @@ def plan_step_fn(state: BoxState) -> BoxState:
             result_str = matching[0]._run(**tool_args)
 
         # Vision result: forward image to VLM rather than passing raw base64
-        from nodes.tool_use import _handle_image_result
+        from utils.llm_utils import _handle_image_result
         result_str = _handle_image_result(result_str, state.request.get("user_input", ""))
 
         _think(f"{tool_name} result", result_str)

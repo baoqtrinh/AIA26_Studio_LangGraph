@@ -22,7 +22,7 @@ HR2 = "═" * 72
 def _check_llm() -> bool:
     """Ping the LLM endpoint (local) or validate the API key (Gemini). Returns True if ready."""
     import requests
-    from app.config import LLM_PROVIDER, LLM_ENDPOINT, GOOGLE_API_KEY, GEMINI_MODEL
+    from settings import LLM_PROVIDER, LLM_ENDPOINT, GOOGLE_API_KEY, GEMINI_MODEL
 
     if LLM_PROVIDER == "gemini":
         if GOOGLE_API_KEY:
@@ -57,7 +57,7 @@ def _banner():
 
 def _print_tools():
     try:
-        from tools import TOOL_CLASSES
+        from tools.mcp.loader import TOOL_CLASSES
         if not TOOL_CLASSES:
             print("  [tools] No GH tools loaded — is the Grasshopper plugin running?")
         else:
