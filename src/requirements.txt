@@ -11,12 +11,12 @@ langchain-community>=0.3.0
 # Tool calling utilities
 langchain-openai>=0.2.0          # provides convert_to_openai_tool helper
 
-# Web search (optional — only needed for general_question routing)
-langchain-tavily>=0.1.0
-
-# Google Gemini (optional — only needed when LLM_PROVIDER=gemini)
+# Google Gemini — required when LLM_PROVIDER="gemini" (default)
 langchain-google-genai>=2.0.0
 
-# FastAPI fallback (optional — kept for app.py)
-fastapi>=0.104.0
-uvicorn>=0.23.2
+# Web search — optional, only needed for general_question routing
+# Sign up for a free key at https://tavily.com
+langchain-tavily>=0.1.0
+
+# Jupyter — optional, only needed to run the test notebook
+jupyterlab>=4.0.0

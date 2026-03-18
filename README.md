@@ -9,21 +9,36 @@ The agent classifies user requests and routes them through specialised branches:
 
 | Requirement | Details |
 |---|---|
-| Python | 3.11 (conda env `311` recommended) |
+| Python | 3.11 |
 | Rhino 8 + Grasshopper | Running with the **Swiftlet** plugin active on port `5001` |
-| Google Gemini API key | Or a local OpenAI-compatible server (LM Studio / Ollama) |
-| Tavily API key | Optional — enables web search in the `general_question` branch |
+| Google Gemini API key | Free tier at [aistudio.google.com](https://aistudio.google.com) — no credit card needed |
+| Tavily API key | Optional — enables web search in the `general_question` branch ([tavily.com](https://tavily.com)) |
+
+> **No Conda?** The steps below show `conda`, but a plain Python `venv` works too — see the venv alternative at the end of step 1.
 
 ---
 
 ## Setup
 
 **1. Clone and create the environment**
+
+_Option A — conda (recommended if you have Anaconda / Miniconda):_
 ```bash
 git clone <repo-url>
 cd AIA26_Studio_LangGraph
-conda create -n 311 python=3.11
+conda create -n 311 python=3.11 -y
 conda activate 311
+```
+
+_Option B — plain Python venv (no conda required):_
+```bash
+git clone <repo-url>
+cd AIA26_Studio_LangGraph
+python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# macOS / Linux:
+source .venv/bin/activate
 ```
 
 **2. Install dependencies**
@@ -31,25 +46,34 @@ conda activate 311
 pip install -r src/requirements.txt
 ```
 
-**3. Configure secrets**  
-Create `src/.env.local` (never committed):
+**3. Get your API key and configure secrets**
+
+1. Go to [aistudio.google.com](https://aistudio.google.com), sign in with a Google account, and click **Get API key**.
+2. Create a file called `.env.local` inside the `src/` folder (this file is gitignored and never committed):
+
 ```
-GOOGLE_API_KEY=your_google_ai_studio_key
-TAVILY_API_KEY=your_tavily_key        # optional
+GOOGLE_API_KEY=paste_your_key_here
+TAVILY_API_KEY=your_tavily_key        # optional — leave blank or omit if not needed
 ```
 
 **4. Configure settings** (optional overrides in `src/settings.py`)
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `LLM_PROVIDER` | `"gemini"` | `"gemini"` or `"local"` |
+| `LLM_PROVIDER` | `"gemini"` | `"gemini"` or `"local"` (LM Studio / Ollama) |
 | `GEMINI_MODEL` | `"gemini-2.5-flash-lite"` | Gemini model name |
-| `LLM_ENDPOINT` | `http://localhost:1234/v1/...` | Local server URL |
+| `LLM_ENDPOINT` | `http://localhost:1234/v1/...` | Local server URL (only used when `LLM_PROVIDER="local"`) |
 | `MCP_GH_ENDPOINT` | `http://localhost:5001/mcp/` | Swiftlet JSON-RPC endpoint |
 | `PLAN_MODE` | `False` | Force multi-step plan routing globally |
 
-**5. Start Rhino + Grasshopper**  
-Open Rhino, load the Swiftlet MCP plugin, and ensure the server is listening on port `5001`.
+For most students, the defaults are fine — just set your `GOOGLE_API_KEY` and you're ready.
+
+**5. Start Rhino + Grasshopper**
+
+1. Open **Rhino 8**.
+2. Make sure the **Swiftlet** plugin is installed and enabled.
+3. Open the provided Grasshopper definition: `src/gh_tools/create_building.gh`.
+4. Confirm the MCP server is listening on port `5001` (Swiftlet shows a status indicator).
 
 **6. Run**
 ```bash
@@ -57,7 +81,7 @@ Open Rhino, load the Swiftlet MCP plugin, and ensure the server is listening on 
 cd src
 python run_agent.py
 
-# Or use the Jupyter notebook
+# Or open the Jupyter notebook (install jupyterlab first if needed: pip install jupyterlab)
 jupyter lab src/notebooks/agent_system_tests.ipynb
 ```
 
@@ -84,17 +108,13 @@ AIA26_Studio_LangGraph/
     │   └── state.py          # BoxState — Pydantic model shared across all nodes
     │
     ├── nodes/
-    │   ├── classification.py            # LLM-based router → 6 request types
-    │   ├── building_design/
-    │   │   └── nodes.py                 # ReAct loop: retrieve_rules → thinking →
-    │   │                                #   execute_action → draw_box (MCP) →
-    │   │                                #   compliance_check → is_compliant
-    │   ├── information/
-    │   │   └── nodes.py                 # show_guide, handle_unknown
-    │   ├── planning/
-    │   │   └── nodes.py                 # planner → execute_plan_step (loop) → plan_summary
-    │   └── search/
-    │       └── nodes.py                 # determine_search_need → [web_search] → answer
+    │   ├── classification_node.py       # LLM-based router → 6 request types
+    │   ├── building_design_node.py      # ReAct loop: retrieve_rules → thinking →
+    │   │                               #   execute_action → draw_box (MCP) →
+    │   │                               #   compliance_check → is_compliant
+    │   ├── information_node.py          # show_guide, handle_unknown
+    │   ├── planning_node.py             # planner → execute_plan_step (loop) → plan_summary
+    │   └── search_node.py              # determine_search_need → [web_search] → answer
     │
     ├── tools/
     │   ├── base.py                      # BaseAgentTool — base class for all tools
@@ -109,7 +129,7 @@ AIA26_Studio_LangGraph/
     │   └── llm_utils.py                 # LLM wrapper (Gemini + local OpenAI-compatible)
     │
     ├── gh_tools/
-    │   └── draw_box.gh                  # Grasshopper definition for the draw_box tool
+    │   └── create_building.gh           # Grasshopper definition for the building tool
     │
     ├── notebooks/
     │   └── agent_system_tests.ipynb     # End-to-end test notebook (all 6 routing branches)
@@ -141,7 +161,7 @@ The graph entry point is always `classify_input`, which routes to one of six bra
 | `src/settings.py` | Single source of truth for provider, model, endpoints, and API keys |
 | `src/models/state.py` | `BoxState` — the shared Pydantic state object passed through every node |
 | `src/graphs/main_graph.py` | Assembles all nodes and edges; call `build_main_graph(checkpointer=…)` |
-| `src/nodes/classification.py` | Prompt-based LLM router classifying input into one of 6 types |
+| `src/nodes/classification_node.py` | Prompt-based LLM router classifying input into one of 6 types |
 | `src/config/design_rules.py` | `DESIGN_GUIDE` list — max area, height, width, floor count, ratios, exits |
 | `src/tools/mcp/loader.py` | Discovers Grasshopper tools from the running MCP server; exposes them as LangChain tools |
 | `src/utils/llm_utils.py` | `fast_llm()` helper + `ChatLocalLLM` / Gemini adapter |
