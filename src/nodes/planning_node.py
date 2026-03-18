@@ -114,9 +114,9 @@ Plan:"""
         state.done = True
         return state
 
-    state.plan = plan
-    state.plan_step = 0
-    state.plan_results = {}
+    state.context["plan"]         = plan
+    state.context["plan_step"]    = 0
+    state.context["plan_results"] = {}
 
     print(f"  ┊ {len(plan)}-step plan:")
     for s in plan:
@@ -134,8 +134,8 @@ def plan_step_fn(state: BoxState) -> BoxState:
     """Execute the current plan step via LLM tool-calling, then advance the counter."""
     from tools.mcp.loader import TOOL_CLASSES
 
-    plan = state.plan or []
-    idx = state.plan_step
+    plan = state.context.get("plan") or []
+    idx  = state.context.get("plan_step", 0)
 
     # Safety guard (should not happen)
     if idx >= len(plan):
@@ -152,8 +152,9 @@ def plan_step_fn(state: BoxState) -> BoxState:
 
     # ── Context from previous steps ──────────────────────────────────────────
     prev_context = ""
-    if state.plan_results:
-        lines = [f"  • {k}: {v}" for k, v in state.plan_results.items()]
+    plan_results_so_far = state.context.get("plan_results") or {}
+    if plan_results_so_far:
+        lines = [f"  • {k}: {v}" for k, v in plan_results_so_far.items()]
         prev_context = "\nResults from previous steps:\n" + "\n".join(lines)
 
     tool_list = "\n".join(f"- {t.name}: {t.description}" for t in TOOL_CLASSES)
@@ -208,10 +209,10 @@ def plan_step_fn(state: BoxState) -> BoxState:
         _think(f"{tool_name} result", result_str)
 
     # ── Store result and advance ──────────────────────────────────────────────
-    plan_results = dict(state.plan_results or {})
+    plan_results = dict(state.context.get("plan_results") or {})
     plan_results[output_key] = result_str
-    state.plan_results = plan_results
-    state.plan_step = idx + 1
+    state.context["plan_results"] = plan_results
+    state.context["plan_step"]    = idx + 1
 
     state.history.append({
         "node":       "plan_step",
@@ -225,7 +226,8 @@ def plan_step_fn(state: BoxState) -> BoxState:
 
 def plan_step_router(state: BoxState) -> str:
     """Continue executing steps, or finish when all are done."""
-    if state.plan and state.plan_step < len(state.plan):
+    plan = state.context.get("plan")
+    if plan and state.context.get("plan_step", 0) < len(plan):
         return "continue"
     return "done"
 
@@ -237,7 +239,7 @@ def plan_step_router(state: BoxState) -> str:
 def plan_summary_fn(state: BoxState) -> BoxState:
     """Synthesise all step results into a concise final answer."""
     results_text = "\n".join(
-        f"  [{k}]: {v}" for k, v in (state.plan_results or {}).items()
+        f"  [{k}]: {v}" for k, v in (state.context.get("plan_results") or {}).items()
     )
     prompt = (
         f"A multi-step Grasshopper design task has just been completed.\n\n"
@@ -245,13 +247,13 @@ def plan_summary_fn(state: BoxState) -> BoxState:
         f"Step results:\n{results_text}\n\n"
         "Write a short, clear summary for the user: what was created and any key values."
     )
-    print(f"\n  ┊ synthesising plan summary...")
+    print(f"\n  \u252a synthesising plan summary...")
     try:
         resp = chat_llm._generate([HumanMessage(content=prompt)])
         state.answer = resp.generations[0].message.content
     except Exception:
         state.answer = (
-            f"Plan completed in {len(state.plan or [])} steps.\n\n{results_text}"
+            f"Plan completed in {len(state.context.get('plan') or [])} steps.\n\n{results_text}"
         )
     state.done = True
     state.history.append({"node": "plan_summary", "answer": state.answer})

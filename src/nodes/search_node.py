@@ -30,7 +30,7 @@ def determine_search_need_fn(state: BoxState) -> BoxState:
     response = fast_llm(prompt)    # yes/no — short timeout is fine
     search_needed = "yes" in str(response).lower()
 
-    state.needs_search = search_needed
+    state.context["needs_search"] = search_needed
     _think("search needed", str(search_needed))
 
     if search_needed:
@@ -43,20 +43,20 @@ def determine_search_need_fn(state: BoxState) -> BoxState:
         """
 
         search_query = str(llm(prompt)).strip()
-        state.search_query = search_query
+        state.context["search_query"] = search_query
         _think("search query", search_query)
     
     state.history.append({
         "node": "determine_search_need",
-        "needs_search": state.needs_search,
-        "search_query": state.search_query if state.needs_search else None
+        "needs_search": state.context.get("needs_search"),
+        "search_query": state.context.get("search_query") if search_needed else None
     })
     
     return state
 
 def perform_web_search_fn(state: BoxState) -> BoxState:
     """Perform a web search using Tavily search."""
-    query = state.search_query
+    query = state.context.get("search_query")
     
     try:
         # Use the search_web tool
@@ -64,17 +64,17 @@ def perform_web_search_fn(state: BoxState) -> BoxState:
         
         # Check if results contains a list of search items
         if "results" in results and isinstance(results["results"], list):
-            state.search_results = results["results"]
+            state.context["search_results"] = results["results"]
         else:
-            state.search_results = []
+            state.context["search_results"] = []
         
         state.history.append({
             "node": "perform_web_search",
             "query": query,
-            "results_count": len(state.search_results)
+            "results_count": len(state.context["search_results"])
         })
     except Exception as e:
-        state.search_results = []
+        state.context["search_results"] = []
         state.history.append({
             "node": "perform_web_search",
             "query": query,
@@ -86,7 +86,7 @@ def perform_web_search_fn(state: BoxState) -> BoxState:
 def answer_with_search_fn(state: BoxState) -> BoxState:
     """Answer general questions using web search results."""
     user_input = state.request.get("user_input", "")
-    search_results = state.search_results or []
+    search_results = state.context.get("search_results") or []
     
     # Format search results for the prompt
     formatted_results = ""

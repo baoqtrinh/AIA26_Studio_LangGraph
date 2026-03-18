@@ -1,23 +1,23 @@
 from langgraph.graph import StateGraph
 
 from models.state import BoxState
-from nodes.classification import classify_input_fn
-from nodes.information.nodes import show_guide_fn, handle_unknown_fn
-from nodes.search.nodes import (
+from nodes.classification_node import classify_input_fn
+from nodes.information_node import show_guide_fn, handle_unknown_fn
+from nodes.search_node import (
     determine_search_need_fn,
     perform_web_search_fn,
     answer_with_search_fn,
     answer_without_search_fn,
 )
-from nodes.building_design.nodes import (
+from nodes.building_design_node import (
     retrieve_rules_fn,
     thinking_fn,
     action_fn,
-    draw_box_fn,
+    create_building_as_box,
     compliance_check_fn,
     is_compliant_fn,
 )
-from nodes.planning.nodes import (
+from nodes.planning_node import (
     planner_fn,
     plan_step_fn,
     plan_step_router,
@@ -37,7 +37,7 @@ def build_main_graph(checkpointer=None):
                          Draw / model a single geometry via GH script.
 
     design_building  → retrieve_rules → thinking → execute_action
-                     → draw_box → compliance_check → is_compliant
+                     → create_building_as_box → compliance_check → is_compliant
                          Size a building against code constraints (ReAct loop).
 
     show_guide       → show_guide
@@ -58,7 +58,7 @@ def build_main_graph(checkpointer=None):
     g.add_node("retrieve_rules",       retrieve_rules_fn)
     g.add_node("thinking",             thinking_fn)
     g.add_node("execute_action",       action_fn)
-    g.add_node("draw_box",             draw_box_fn)
+    g.add_node("create_building_as_box", create_building_as_box)
     g.add_node("compliance_check",     compliance_check_fn)
     g.add_node("is_compliant",         is_compliant_fn)
 
@@ -100,12 +100,12 @@ def build_main_graph(checkpointer=None):
     # Branch B: ReAct loop
     g.add_edge("retrieve_rules",   "thinking")
     g.add_edge("thinking",         "execute_action")
-    g.add_edge("execute_action",   "draw_box")
-    g.add_edge("draw_box",         "compliance_check")
+    g.add_edge("execute_action",   "create_building_as_box")
+    g.add_edge("create_building_as_box", "compliance_check")
     g.add_edge("compliance_check", "is_compliant")
     g.add_conditional_edges(
         "is_compliant",
-        lambda state: "True" if state.compliant else "False",
+        lambda state: "True" if state.context.get("compliant") else "False",
         {"True": "__end__", "False": "thinking"},
     )
 
@@ -116,7 +116,7 @@ def build_main_graph(checkpointer=None):
     # Branch D
     g.add_conditional_edges(
         "determine_search_need",
-        lambda state: "needs_search" if state.needs_search else "no_search",
+        lambda state: "needs_search" if state.context.get("needs_search") else "no_search",
         {"needs_search": "perform_web_search", "no_search": "answer_without_search"},
     )
     g.add_edge("perform_web_search",    "answer_with_search")
