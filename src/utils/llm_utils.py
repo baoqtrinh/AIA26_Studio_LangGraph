@@ -2,6 +2,7 @@
 LLM wrapper — supports:
   • Local OpenAI-compatible server (LM Studio, Ollama, …)  → LLM_PROVIDER=local
   • Google Gemini (AI Studio)                              → LLM_PROVIDER=gemini
+  • Cloudflare Workers AI (free tier, no credit card)      → LLM_PROVIDER=cloudflare
 
 Switch providers by setting LLM_PROVIDER in .env.local.
 """
@@ -23,6 +24,7 @@ from langchain_core.messages import ToolCall
 from settings import (
     LLM_PROVIDER, LLM_ENDPOINT, LLM_MODEL, LLM_TEMPERATURE, LLM_TIMEOUT,
     GOOGLE_API_KEY, GEMINI_MODEL,
+    CF_ACCOUNT_ID, CF_API_TOKEN, CF_MODEL,
 )
 
 
@@ -34,6 +36,7 @@ class ChatLocalLLM(BaseChatModel):
     model: Optional[str] = LLM_MODEL
     timeout: int = LLM_TIMEOUT
     tools: List[Dict[str, Any]] = Field(default_factory=list)
+    auth_token: str = ""  # Bearer token for endpoints that require authentication
 
     @property
     def _llm_type(self) -> str:
@@ -48,6 +51,7 @@ class ChatLocalLLM(BaseChatModel):
             model=self.model,
             timeout=self.timeout,
             tools=openai_tools,
+            auth_token=self.auth_token,
         )
 
     def _generate(
@@ -98,7 +102,10 @@ class ChatLocalLLM(BaseChatModel):
             if self.tools:
                 payload["tools"] = self.tools
 
-            resp = requests.post(self.endpoint, json=payload, timeout=self.timeout)
+            headers: Dict[str, str] = {"Content-Type": "application/json"}
+            if self.auth_token:
+                headers["Authorization"] = f"Bearer {self.auth_token}"
+            resp = requests.post(self.endpoint, json=payload, headers=headers, timeout=self.timeout)
             resp.raise_for_status()
 
             data = resp.json()
@@ -153,6 +160,32 @@ class _SimpleLLMShim:
         return self._chat
 
 
+# ── Cloudflare Workers AI provider ──────────────────────────────────────────
+
+class _CloudflareShim:
+    """Thin wrapper for Cloudflare Workers AI (OpenAI-compatible REST API)."""
+
+    def __init__(self, timeout: Optional[int] = None) -> None:
+        endpoint = (
+            f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}"
+            "/ai/v1/chat/completions"
+        )
+        self._chat = ChatLocalLLM(
+            endpoint=endpoint,
+            model=CF_MODEL,
+            auth_token=CF_API_TOKEN,
+            timeout=timeout or LLM_TIMEOUT,
+        )
+
+    def __call__(self, prompt: str, **_: Any) -> str:
+        result = self._chat._generate([HumanMessage(content=prompt)])
+        return result.generations[0].message.content
+
+    @property
+    def chat(self) -> ChatLocalLLM:
+        return self._chat
+
+
 # ── Gemini provider ───────────────────────────────────────────────────────────
 
 def _build_gemini_chat(timeout: Optional[int] = None) -> BaseChatModel:
@@ -195,12 +228,20 @@ class _GeminiShim:
 def _make_shim(timeout: Optional[int] = None):
     if LLM_PROVIDER == "gemini":
         return _GeminiShim(timeout)
+    if LLM_PROVIDER == "cloudflare":
+        return _CloudflareShim(timeout)
     return _SimpleLLMShim(timeout)
 
 
 def _make_chat_llm() -> BaseChatModel:
     if LLM_PROVIDER == "gemini":
         return _build_gemini_chat()
+    if LLM_PROVIDER == "cloudflare":
+        endpoint = (
+            f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}"
+            "/ai/v1/chat/completions"
+        )
+        return ChatLocalLLM(endpoint=endpoint, model=CF_MODEL, auth_token=CF_API_TOKEN)
     return ChatLocalLLM()
 
 

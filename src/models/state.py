@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from typing import Annotated, Dict, Any, List, Optional, Literal
 
 
-class BoxState(BaseModel):
+class AgentState(BaseModel):
     """Agent state — slim universal core + one flexible workflow scratchpad.
 
     Core fields (always present, typed, used by the router or LLM):
@@ -33,8 +33,8 @@ class BoxState(BaseModel):
     # ── Core (universal) ──────────────────────────────────────────────────────
     request:      Dict[str, Any]
     request_type: Optional[Literal[
-        "design_building", "show_guide", "general_question",
-        "use_tool", "plan", "unknown"
+        "design_building", "climate_optimization", "show_guide", "general_question",
+        "use_tool", "unknown"
     ]] = None
     answer:      Optional[str]  = None
     done:        Optional[bool] = None

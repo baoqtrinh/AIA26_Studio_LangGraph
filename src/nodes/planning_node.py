@@ -22,7 +22,7 @@ from typing import Any, Dict
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from config.prompts import build_csharp_system_prompt
-from models.state import BoxState
+from models.state import AgentState
 from utils.llm_utils import chat_llm, fast_llm
 
 _HR = "─" * 72
@@ -39,7 +39,7 @@ def _think(label: str, text: str):
 # 1.  Planner — produce the step list
 # ─────────────────────────────────────────────────────────────────────────────
 
-def planner_fn(state: BoxState) -> BoxState:
+def planner_fn(state: AgentState) -> AgentState:
     """Decompose the user's multi-step request into an ordered tool-call plan."""
     from tools.mcp.loader import TOOL_CLASSES
 
@@ -130,7 +130,7 @@ Plan:"""
 # 2.  Step executor — looped once per plan step
 # ─────────────────────────────────────────────────────────────────────────────
 
-def plan_step_fn(state: BoxState) -> BoxState:
+def plan_step_fn(state: AgentState) -> AgentState:
     """Execute the current plan step via LLM tool-calling, then advance the counter."""
     from tools.mcp.loader import TOOL_CLASSES
 
@@ -224,7 +224,7 @@ def plan_step_fn(state: BoxState) -> BoxState:
     return state
 
 
-def plan_step_router(state: BoxState) -> str:
+def plan_step_router(state: AgentState) -> str:
     """Continue executing steps, or finish when all are done."""
     plan = state.context.get("plan")
     if plan and state.context.get("plan_step", 0) < len(plan):
@@ -236,7 +236,7 @@ def plan_step_router(state: BoxState) -> str:
 # 3.  Summary — final natural-language answer
 # ─────────────────────────────────────────────────────────────────────────────
 
-def plan_summary_fn(state: BoxState) -> BoxState:
+def plan_summary_fn(state: AgentState) -> AgentState:
     """Synthesise all step results into a concise final answer."""
     results_text = "\n".join(
         f"  [{k}]: {v}" for k, v in (state.context.get("plan_results") or {}).items()

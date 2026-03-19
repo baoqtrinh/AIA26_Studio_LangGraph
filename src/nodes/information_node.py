@@ -1,8 +1,8 @@
-from models.state import BoxState
+from models.state import AgentState
 from utils.llm_utils import llm
 from config.design_rules import DESIGN_GUIDE
 
-def show_guide_fn(state: BoxState) -> BoxState:
+def show_guide_fn(state: AgentState) -> AgentState:
     """Return the design guidelines in a readable format."""
     guide_text = "# Building Design Guidelines\n\n"
     
@@ -29,7 +29,7 @@ def show_guide_fn(state: BoxState) -> BoxState:
     
     return state
 
-def handle_unknown_fn(state: BoxState) -> BoxState:
+def handle_unknown_fn(state: AgentState) -> AgentState:
     """Handle unknown request types with a helpful message."""
     user_input = state.request.get("user_input", "")
     

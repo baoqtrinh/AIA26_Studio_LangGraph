@@ -1,6 +1,19 @@
+import json
+import re
 import requests
+import textwrap
 from typing import Dict, Any, List, Optional
-from models.state import BoxState
+from models.state import AgentState
+from utils.llm_utils import fast_llm
+
+_HR = "─" * 72
+
+
+def _think(label: str, text: str):
+    prefix = f"  ┊ {label}: "
+    body = str(text).strip().replace("\n", " ")
+    for i, line in enumerate(textwrap.wrap(body, width=68)):
+        print((prefix if i == 0 else " " * len(prefix)) + line)
 
 try:
     from settings import MCP_GH_ENDPOINT, MCP_TIMEOUT
@@ -78,7 +91,88 @@ def _call_mcp_add_emergency_exits() -> tuple[bool, str]:
         return False, f"MCP call failed: {exc}"
 
 
-def retrieve_rules_fn(state: BoxState) -> BoxState:
+# ─────────────────────────────────────────────────────────────────────────────
+# Plan & Execute — building planner (outer plan written before any execution)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def building_planner_fn(state: AgentState) -> AgentState:
+    """Write the high-level execution plan BEFORE any building step runs.
+
+    This is the Plan & Execute pattern: the full plan is committed upfront.
+    The planner first decides the task SCOPE — compliance-only or compliance
+    + climate optimization — then writes the matching step list.
+
+    Scope decision logic (LLM-driven, falls back to request_type):
+      compliance only         → 1 step  (ReAct compliance loop)
+      compliance + climate    → 3 steps (compliance → investigate → optimise)
+    """
+    user_input   = state.request.get("user_input", "")
+    request_type = state.request_type or "design_building"
+
+    # ── Default fallbacks (used if LLM parse fails) ───────────────────────────
+    _CLIMATE_STEPS = [
+        {"step": 1, "task": "Design a code-compliant building (dimensions, floors, emergency exits)"},
+        {"step": 2, "task": "Investigate local climate via web search"},
+        {"step": 3, "task": "Optimise building orientation from climate evidence"},
+    ]
+    _COMPLIANCE_STEPS = [
+        {"step": 1, "task": "Design a code-compliant building (dimensions, floors, emergency exits)"},
+    ]
+    default_scope = (
+        "compliance + climate optimization"
+        if request_type == "climate_optimization"
+        else "compliance only"
+    )
+    default_steps = _CLIMATE_STEPS if request_type == "climate_optimization" else _COMPLIANCE_STEPS
+
+    # ── Ask the LLM to decide scope and write the matching plan ───────────────
+    prompt = f"""You are an architecture project planner.
+
+User request: "{user_input}"
+
+Step 1 — Decide the task scope:
+  "compliance_only"        — the request is about sizing/designing a code-compliant building
+                             with NO specific city/location for climate purposes.
+  "compliance_and_climate" — the request mentions a specific location AND implies
+                             orientation or climate optimisation.
+
+Step 2 — Write an execution plan using only the steps that match the scope:
+  [1] Design a code-compliant building (dimensions, floors, emergency exits)  ← always
+  [2] Investigate local climate via web search                                ← climate scope only
+  [3] Optimise building orientation from climate evidence                     ← climate scope only
+
+Respond ONLY with valid JSON (no markdown fences):
+{{"scope": "compliance_only" | "compliance_and_climate", "reason": "<one short sentence>", "steps": [{{"step": 1, "task": "..."}}]}}"""
+
+    scope  = default_scope
+    reason = ""
+    steps  = default_steps
+
+    try:
+        raw    = str(fast_llm(prompt)).strip()
+        raw    = re.sub(r"^```(?:json)?\s*", "", raw)
+        raw    = re.sub(r"\s*```$",          "", raw)
+        parsed = json.loads(raw)
+        assert isinstance(parsed, dict)
+        steps  = parsed.get("steps", default_steps)
+        assert isinstance(steps, list) and len(steps) > 0
+        scope_raw = parsed.get("scope", "")
+        scope = (
+            "compliance + climate optimization" if scope_raw == "compliance_and_climate"
+            else "compliance only"              if scope_raw == "compliance_only"
+            else default_scope
+        )
+        reason = parsed.get("reason", "")
+    except Exception:
+        pass  # fall through to defaults
+
+    state.context["build_plan"] = steps
+
+    state.history.append({"node": "building_planner", "scope": scope, "reason": reason, "plan": steps})
+    return state
+
+
+def retrieve_rules_fn(state: AgentState) -> AgentState:
     """Load rules from DESIGN_GUIDE and auto-generate each rule's id as
     '{type}_constraint'.  Any new entry added to design_rules.py is picked
     up automatically — no mapping table needed here.
@@ -99,7 +193,7 @@ def retrieve_rules_fn(state: BoxState) -> BoxState:
     state.context["rules"] = rules
     return state
 
-def thinking_fn(state: BoxState) -> BoxState:
+def thinking_fn(state: AgentState) -> AgentState:
     """ReAct thinking step: call the LLM to reason about the current state,
     understand the user's intent (including inferring missing parameters), and
     decide the next action to take.  The LLM output is a JSON object:
@@ -164,7 +258,7 @@ def thinking_fn(state: BoxState) -> BoxState:
     )
 
     try:
-        response = fast_llm.invoke([SystemMessage(content=system), HumanMessage(content=human)])
+        response = fast_llm.chat.invoke([SystemMessage(content=system), HumanMessage(content=human)])
         raw = response.content.strip()
         # Strip markdown code fences if present
         if raw.startswith("```"):
@@ -191,7 +285,7 @@ def thinking_fn(state: BoxState) -> BoxState:
     return state
 
 
-def action_fn(state: BoxState) -> BoxState:
+def action_fn(state: AgentState) -> AgentState:
     """Parse the LLM's action decision produced by thinking_fn and set state.action.
     Falls back to rule-based logic only if thinking_fn did not produce a valid action
     (e.g. during unit tests or when the LLM call failed).
@@ -248,7 +342,7 @@ def action_fn(state: BoxState) -> BoxState:
     state.history.append({"node": "action", "action": ctx.get("action")})
     return state
 
-def create_building_as_box(state: BoxState) -> BoxState:
+def create_building_as_box(state: AgentState) -> AgentState:
     """Execute the chosen action and update the box parameters."""
     ctx = state.context
     if ctx.get("box") is None:
@@ -359,7 +453,7 @@ def create_building_as_box(state: BoxState) -> BoxState:
 
     return state
 
-def compliance_check_fn(state: BoxState) -> BoxState:
+def compliance_check_fn(state: AgentState) -> AgentState:
     """Check if the current box design meets all constraints."""
     ctx   = state.context
     box   = ctx.get("box") or {}
@@ -401,7 +495,7 @@ def compliance_check_fn(state: BoxState) -> BoxState:
 
     return state
 
-def is_compliant_fn(state: BoxState) -> BoxState:
+def is_compliant_fn(state: AgentState) -> AgentState:
     """Determine if the design is compliant based on issues."""
     issues    = state.context.get("issues") or []
     compliant = len(issues) == 0

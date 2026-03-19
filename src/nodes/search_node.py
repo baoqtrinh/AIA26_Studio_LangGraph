@@ -1,4 +1,4 @@
-from models.state import BoxState
+from models.state import AgentState
 from utils.llm_utils import llm, fast_llm
 from tools.search.tools import search_web
 import json
@@ -10,7 +10,7 @@ def _think(label: str, text: str):
     for i, line in enumerate(textwrap.wrap(body, width=68)):
         print((prefix if i == 0 else " " * len(prefix)) + line)
 
-def determine_search_need_fn(state: BoxState) -> BoxState:
+def determine_search_need_fn(state: AgentState) -> AgentState:
     """Determine if a web search is needed to answer the general question."""
     user_input = state.request.get("user_input", "")
     
@@ -54,7 +54,7 @@ def determine_search_need_fn(state: BoxState) -> BoxState:
     
     return state
 
-def perform_web_search_fn(state: BoxState) -> BoxState:
+def perform_web_search_fn(state: AgentState) -> AgentState:
     """Perform a web search using Tavily search."""
     query = state.context.get("search_query")
     
@@ -83,7 +83,7 @@ def perform_web_search_fn(state: BoxState) -> BoxState:
     
     return state
 
-def answer_with_search_fn(state: BoxState) -> BoxState:
+def answer_with_search_fn(state: AgentState) -> AgentState:
     """Answer general questions using web search results."""
     user_input = state.request.get("user_input", "")
     search_results = state.context.get("search_results") or []
@@ -121,7 +121,7 @@ def answer_with_search_fn(state: BoxState) -> BoxState:
     
     return state
 
-def answer_without_search_fn(state: BoxState) -> BoxState:
+def answer_without_search_fn(state: AgentState) -> AgentState:
     """Answer general questions about architecture without web search."""
     user_input = state.request.get("user_input", "")
     

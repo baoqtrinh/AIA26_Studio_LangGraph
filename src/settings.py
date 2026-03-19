@@ -14,9 +14,15 @@ load_dotenv(os.path.join(_HERE, ".env.local"))
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 
+# ── Cloudflare Workers AI ─────────────────────────────────────────────────────
+CF_ACCOUNT_ID = os.getenv("CF_ACCOUNT_ID", "")
+CF_API_TOKEN  = os.getenv("CF_API_TOKEN", "")
+CF_MODEL      = "@cf/meta/llama-3.1-8b-instruct"
+
 # ── LLM Provider ─────────────────────────────────────────────────────────────
-# "local"  → OpenAI-compatible local server (e.g. LM Studio)
-# "gemini" → Google Gemini via google-genai SDK
+# "local"       → OpenAI-compatible local server (e.g. LM Studio, Ollama)
+# "gemini"      → Google Gemini via google-genai SDK
+# "cloudflare"  → Cloudflare Workers AI (free tier, no credit card needed)
 LLM_PROVIDER = "gemini"
 
 # ── Local LLM (OpenAI-compatible endpoint, e.g. LM Studio) ───────────────────

@@ -1,4 +1,4 @@
-from models.state import BoxState
+from models.state import AgentState
 from utils.llm_utils import fast_llm
 
 _HR = "─" * 72
@@ -13,7 +13,7 @@ def _think(label: str, text: str):
         print((prefix if i == 0 else " " * len(prefix)) + line)
 
 
-def classify_input_fn(state: BoxState) -> BoxState:
+def classify_input_fn(state: AgentState) -> AgentState:
     """Classify the user input into one of five routing categories."""
     user_input = state.request.get("user_input", "")
 
@@ -51,20 +51,22 @@ def classify_input_fn(state: BoxState) -> BoxState:
 User request: "{user_input}"
 
 Categories:
-1. design_building: Design, size or check code compliance of a BUILDING as a whole
+1. climate_optimization: Design a building for a SPECIFIC LOCATION (city, country, or climate zone)
+   where the user also wants the building oriented toward the sun or considers local climate.
+   Must mention BOTH building design AND a geographic location.
+2. design_building: Design, size or check code compliance of a BUILDING as a whole
    (floors, total area, depth, structural ratios, emergency exits, building code).
+   No specific location or sun orientation mentioned.
 {tool_section}
-3. show_guide: Show design guidelines, rules or constraints
-4. general_question: General architecture or design question that does NOT involve drawing,
+4. show_guide: Show design guidelines, rules or constraints
+5. general_question: General architecture or design question that does NOT involve drawing,
    sizing a building, or running tools. Must be about architecture, engineering, or construction.
-5. plan: The user lists TWO OR MORE sequential steps or tasks to perform in order
-   (e.g. "1) do X, 2) do Y, 3) do Z" or "first … then … finally …").
 6. unknown: Does not fit any category above, or is completely unrelated to architecture/design/construction.
 
 Rules:
-- Whole-building sizing with code compliance → design_building
+- Building design WITH a specific location AND solar/climate/orientation intent → climate_optimization
+- Whole-building sizing with code compliance, NO location specified → design_building
 - Drawing / modelling any specific geometry shape or running a named tool → use_tool
-- Two or more ordered steps to execute in sequence → plan
 - Architecture/design/construction knowledge question (no drawing, no sizing) → general_question
 - Anything outside architecture, design, or construction → unknown
 - Output ONLY the category name, nothing else.
@@ -83,14 +85,14 @@ Classification:"""
     classification = str(response).strip().lower()
     _think("LLM raw", classification)
 
-    if "design_building" in classification:
+    if "climate_optimization" in classification:
+        state.request_type = "climate_optimization"
+    elif "design_building" in classification:
         state.request_type = "design_building"
     elif "use_tool" in classification:
         state.request_type = "use_tool"
     elif "show_guide" in classification:
         state.request_type = "show_guide"
-    elif "plan" in classification:
-        state.request_type = "plan"
     elif "general_question" in classification:
         state.request_type = "general_question"
     else:

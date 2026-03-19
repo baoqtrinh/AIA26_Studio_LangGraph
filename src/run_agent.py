@@ -78,8 +78,8 @@ def _reload_tools():
 
 
 def _run(graph, user_input: str, messages: list, force_plan: bool = False):
-    from models.state import BoxState
-    state = BoxState(
+    from models.state import AgentState
+    state = AgentState(
         request={"user_input": user_input},
         messages=list(messages),
         # Skip classifier — route straight to planner when plan mode is on
@@ -141,17 +141,7 @@ def main():
     from graphs.main_graph import build_main_graph
     graph = build_main_graph()
 
-    # ── save + open graph image on startup ───────────────────────────────────
-    try:
-        os.makedirs("visualizations", exist_ok=True)
-        png_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "visualizations", "graph.png")
-        png_bytes = graph.get_graph().draw_mermaid_png()
-        with open(png_path, "wb") as f:
-            f.write(png_bytes)
-        print(f"  [graph] saved → {png_path}")
-    except Exception as exc:
-        print(f"  [graph] could not render image: {exc}")
-    print()
+
 
     conversation_messages: list = []   # persisted across turns in this session
 
