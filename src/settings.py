@@ -38,7 +38,4 @@ GEMINI_MODEL = "gemini-2.5-flash-lite"
 MCP_GH_ENDPOINT = "http://localhost:5001/mcp/"  # Swiftlet JSON-RPC 2.0 endpoint
 MCP_TIMEOUT     = 30     # seconds
 
-# ── Plan mode default ─────────────────────────────────────────────────────────
-# True  → agent always decomposes prompts into multi-tool sequences
-# False → normal classifier-based routing (can still be toggled at runtime)
-PLAN_MODE = False
+

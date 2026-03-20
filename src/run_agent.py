@@ -77,13 +77,11 @@ def _reload_tools():
         print(f"  [reload] error: {exc}")
 
 
-def _run(graph, user_input: str, messages: list, force_plan: bool = False):
+def _run(graph, user_input: str, messages: list):
     from models.state import AgentState
     state = AgentState(
         request={"user_input": user_input},
         messages=list(messages),
-        # Skip classifier — route straight to planner when plan mode is on
-        request_type="plan" if force_plan else None,
     )
     print()
     print(f"  ┊ input: {user_input}")
@@ -145,9 +143,6 @@ def main():
 
     conversation_messages: list = []   # persisted across turns in this session
 
-    import settings as _s
-    plan_mode: bool = _s.PLAN_MODE       # default from settings.py; toggled via 'plan on/off'
-
     while True:
         try:
             user_input = input("You: ").strip()
@@ -176,26 +171,7 @@ def main():
                     print(f"  {tag}: {m['content'][:120]}")
             print()
             continue
-        elif user_input.lower() in ("plan on", "plan"):
-            plan_mode = True
-            print("  [plan mode] ON  — prompts will be decomposed into multi-tool sequences.")
-            print("                    Type 'plan off' to return to normal routing.")
-            print()
-            continue
-        elif user_input.lower() == "plan off":
-            plan_mode = False
-            print("  [plan mode] OFF  — back to normal routing.")
-            print()
-            continue
-        elif user_input.lower() == "plan status":
-            print(f"  [plan mode] {'ON' if plan_mode else 'OFF'}")
-            print()
-            continue
-
-        if plan_mode:
-            print("  [plan mode ON]")
-
-        answer = _run(graph, user_input, conversation_messages, force_plan=plan_mode)
+        answer = _run(graph, user_input, conversation_messages)
 
         # Accumulate conversation memory (keep last 20 turns to avoid unbounded growth)
         conversation_messages.append({"role": "user", "content": user_input})
