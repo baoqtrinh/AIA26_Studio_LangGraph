@@ -3,11 +3,13 @@ from langgraph.graph import StateGraph
 from models.state import AgentState
 from nodes.classification_node import classify_input_fn
 from nodes.information_node import show_guide_fn, handle_unknown_fn
-from nodes.search_node import (
-    determine_search_need_fn,
-    perform_web_search_fn,
-    answer_with_search_fn,
-    answer_without_search_fn,
+from nodes.deep_research_node import (
+    deep_decompose_fn,
+    deep_search_fn,
+    deep_reflect_fn,
+    deep_reflect_router,
+    deep_followup_fn,
+    deep_synthesize_fn,
 )
 from nodes.building_design_node import (
     building_planner_fn,
@@ -44,7 +46,10 @@ def build_main_graph(checkpointer=None):
     use_tool             → handle_unknown  (placeholder until a single-tool node exists)
 
     show_guide       → show_guide
-    general_question → determine_search_need → [web_search |] → answer
+    general_question → deep_decompose → deep_search → deep_reflect
+                     → [gaps?] deep_followup → deep_synthesize
+                                             → deep_synthesize
+                         Deep Research: decomposes query, iterative multi-search, reflect, synthesize.
     unknown          → handle_unknown
     """
     g = StateGraph(AgentState)
@@ -71,11 +76,12 @@ def build_main_graph(checkpointer=None):
     g.add_node("show_guide",           show_guide_fn)
     g.add_node("handle_unknown",       handle_unknown_fn)
 
-    # ── Branch D: General Q&A + optional web search ────────────────────
-    g.add_node("determine_search_need",  determine_search_need_fn)
-    g.add_node("perform_web_search",     perform_web_search_fn)
-    g.add_node("answer_with_search",     answer_with_search_fn)
-    g.add_node("answer_without_search",  answer_without_search_fn)
+    # ── Branch D: Deep Research Agent ────────────────────────────────────
+    g.add_node("deep_decompose",   deep_decompose_fn)
+    g.add_node("deep_search",      deep_search_fn)
+    g.add_node("deep_reflect",     deep_reflect_fn)
+    g.add_node("deep_followup",    deep_followup_fn)
+    g.add_node("deep_synthesize",  deep_synthesize_fn)
 
     # ── Entry + routing ────────────────────────────────────────────────────────
     g.set_entry_point("classify_input")
@@ -88,7 +94,7 @@ def build_main_graph(checkpointer=None):
             "design_building":      "building_planner",
             "use_tool":             "handle_unknown",
             "show_guide":        "show_guide",
-            "general_question":  "determine_search_need",
+            "general_question":  "deep_decompose",
             "unknown":           "handle_unknown",
         },
     )
@@ -127,14 +133,15 @@ def build_main_graph(checkpointer=None):
     g.add_edge("show_guide",     "__end__")
     g.add_edge("handle_unknown", "__end__")
 
-    # Branch D
+    # Branch D: Deep Research Agent
+    g.add_edge("deep_decompose", "deep_search")
+    g.add_edge("deep_search",    "deep_reflect")
     g.add_conditional_edges(
-        "determine_search_need",
-        lambda state: "needs_search" if state.context.get("needs_search") else "no_search",
-        {"needs_search": "perform_web_search", "no_search": "answer_without_search"},
+        "deep_reflect",
+        deep_reflect_router,
+        {"follow_up": "deep_followup", "synthesize": "deep_synthesize"},
     )
-    g.add_edge("perform_web_search",    "answer_with_search")
-    g.add_edge("answer_with_search",    "__end__")
-    g.add_edge("answer_without_search", "__end__")
+    g.add_edge("deep_followup",   "deep_synthesize")
+    g.add_edge("deep_synthesize", "__end__")
 
     return g.compile(checkpointer=checkpointer)
